@@ -2,8 +2,8 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL: REACT_APP_API_URL
-    // baseURL: "https://tracker-server-hxo4.onrender.com/api"
+    // baseURL: REACT_APP_API_URL
+    baseURL: "https://tracker-server-hxo4.onrender.com/api"
 });
 
 // Flag to prevent multiple redirects
