@@ -211,14 +211,7 @@ export default function Processes() {
         return statusMap[status?.toUpperCase()] || "bg-secondary";
     };
 
-    // Calculate total duration
-    const calculateTotalDuration = () => {
-        return filteredProcesses.reduce((total, process) => {
-            return total + (process.durationSeconds || 0);
-        }, 0);
-    };
-
-    // Format duration in a readable format
+    // Format duration in a readable format (hours, minutes, seconds)
     const formatDuration = (seconds) => {
         if (!seconds || seconds === 0) return '0s';
         
@@ -232,6 +225,13 @@ export default function Processes() {
         if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
         
         return parts.join(' ');
+    };
+
+    // Calculate total duration
+    const calculateTotalDuration = () => {
+        return filteredProcesses.reduce((total, process) => {
+            return total + (process.durationSeconds || 0);
+        }, 0);
     };
 
     if (loading) {
@@ -358,21 +358,21 @@ export default function Processes() {
                                     </select>
                                 </div>
                                 <div className="col-md-2">
-                                    <label className="form-label small fw-semibold">Min Duration (s)</label>
+                                    <label className="form-label small fw-semibold">Min Duration</label>
                                     <input
                                         type="number"
                                         className="form-control form-control-sm"
-                                        placeholder="Min"
+                                        placeholder="Min seconds"
                                         value={filters.durationMin}
                                         onChange={(e) => setFilters({...filters, durationMin: e.target.value})}
                                     />
                                 </div>
                                 <div className="col-md-3">
-                                    <label className="form-label small fw-semibold">Max Duration (s)</label>
+                                    <label className="form-label small fw-semibold">Max Duration</label>
                                     <input
                                         type="number"
                                         className="form-control form-control-sm"
-                                        placeholder="Max"
+                                        placeholder="Max seconds"
                                         value={filters.durationMax}
                                         onChange={(e) => setFilters({...filters, durationMax: e.target.value})}
                                     />
@@ -439,7 +439,7 @@ export default function Processes() {
                                                 </span>
                                             </th>
                                             <th>End Time</th>
-                                            <th>Duration (s)</th>
+                                            <th>Duration</th>
                                             <th>Status</th>
                                         </tr>
                                     </thead>
@@ -469,7 +469,7 @@ export default function Processes() {
                                                 </td>
                                                 <td>
                                                     <span className="badge bg-info">
-                                                        {process.durationSeconds || 0}s
+                                                        {formatDuration(process.durationSeconds)}
                                                     </span>
                                                 </td>
                                                 <td>
