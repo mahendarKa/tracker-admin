@@ -114,9 +114,10 @@ export default function Devices() {
         try {
             const lastSeenTime = new Date(lastSeen).getTime();
             const now = new Date().getTime();
-            const diffMinutes = (now - lastSeenTime) / (1000 * 60);
-            if (diffMinutes < 1) return "bg-success";
-            if (diffMinutes < 5) return "bg-warning";
+  const diffSeconds = (now - lastSeenTime) / 1000;
+
+    if (diffSeconds < 30) return "bg-success";
+    if (diffSeconds < 60) return "bg-warning";
             return "bg-danger";
         } catch {
             return "bg-secondary";

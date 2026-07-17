@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../services/axiosConfig";
@@ -16,6 +14,7 @@ export default function Processes() {
     const [loading, setLoading] = useState(true);
     const [showFilters, setShowFilters] = useState(false);
     const [deviceName, setDeviceName] = useState("");
+    const [hasActiveFilters, setHasActiveFilters] = useState(false);
     const [filters, setFilters] = useState({
         processName: "",
         status: "",
@@ -59,12 +58,34 @@ export default function Processes() {
         }
     };
 
+    // Helper function to sort processes in descending order by startTime
+    const sortProcessesDescending = (processData) => {
+        return [...processData].sort((a, b) => {
+            // If both have startTime, compare them
+            if (a.startTime && b.startTime) {
+                return new Date(b.startTime) - new Date(a.startTime);
+            }
+            // If only a has startTime, put a first
+            if (a.startTime) return -1;
+            // If only b has startTime, put b first
+            if (b.startTime) return 1;
+            // If neither has startTime, sort by id descending
+            return b.id - a.id;
+        });
+    };
+
+    // Check if any filter is active
+    const checkActiveFilters = () => {
+        return Object.values(filters).some(v => v !== "");
+    };
+
     const fetchProcesses = async () => {
         if (!deviceId) return;
         
         setLoading(true);
         try {
             const hasFilters = Object.values(filters).some(v => v !== "");
+            setHasActiveFilters(hasFilters);
             
             let response;
             if (hasFilters) {
@@ -80,10 +101,13 @@ export default function Processes() {
                 response = await api.get(`/admin/processes/${deviceId}`);
             }
             
-            setProcesses(response.data || []);
-            setFilteredProcesses(response.data || []);
-            if (response.data && response.data.length > 0) {
-                toast.success(`Loaded ${response.data.length} processes`);
+            // Sort data in descending order by start time
+            const sortedData = sortProcessesDescending(response.data || []);
+            
+            setProcesses(sortedData);
+            setFilteredProcesses(sortedData);
+            if (sortedData.length > 0) {
+                toast.success(`Loaded ${sortedData.length} processes`);
             } else {
                 toast.info("No processes found for this device");
             }
@@ -111,6 +135,7 @@ export default function Processes() {
             durationMin: "",
             durationMax: ""
         });
+        setHasActiveFilters(false);
         setTimeout(() => {
             fetchProcesses();
         }, 100);
@@ -184,6 +209,29 @@ export default function Processes() {
             "CLOSED": "bg-danger"
         };
         return statusMap[status?.toUpperCase()] || "bg-secondary";
+    };
+
+    // Calculate total duration
+    const calculateTotalDuration = () => {
+        return filteredProcesses.reduce((total, process) => {
+            return total + (process.durationSeconds || 0);
+        }, 0);
+    };
+
+    // Format duration in a readable format
+    const formatDuration = (seconds) => {
+        if (!seconds || seconds === 0) return '0s';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        
+        let parts = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+        
+        return parts.join(' ');
     };
 
     if (loading) {
@@ -384,7 +432,12 @@ export default function Processes() {
                                             <th>ID</th>
                                             <th>PID</th>
                                             <th>Process Name</th>
-                                            <th>Start Time</th>
+                                            <th>
+                                                Start Time 
+                                                <span className="ms-1">
+                                                    <i className="bi bi-arrow-down text-primary"></i>
+                                                </span>
+                                            </th>
                                             <th>End Time</th>
                                             <th>Duration (s)</th>
                                             <th>Status</th>
@@ -427,14 +480,38 @@ export default function Processes() {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    {/* Show total duration only when filters are applied */}
+                                    {hasActiveFilters && (
+                                        <tfoot className="table-secondary">
+                                            <tr>
+                                                <td colSpan="5" className="text-end fw-bold">
+                                                    Total Duration (Filtered):
+                                                </td>
+                                                <td className="fw-bold text-primary">
+                                                    {formatDuration(calculateTotalDuration())}
+                                                    <small className="text-muted ms-1">
+                                                        ({calculateTotalDuration().toFixed(0)}s)
+                                                    </small>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
                                 <div className="d-flex justify-content-between align-items-center mt-3">
                                     <small className="text-muted">
                                         Showing {filteredProcesses.length} record{filteredProcesses.length !== 1 ? "s" : ""}
                                     </small>
-                                    <span className="badge bg-light text-dark">
-                                        Total: {filteredProcesses.length}
-                                    </span>
+                                    <div>
+                                        <span className="badge bg-light text-dark me-2">
+                                            Total Records: {filteredProcesses.length}
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <span className="badge bg-primary text-white">
+                                                Total Duration: {formatDuration(calculateTotalDuration())}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../services/axiosConfig";
@@ -15,8 +14,8 @@ export default function Sessions() {
     const [loading, setLoading] = useState(true);
     const [showFilters, setShowFilters] = useState(false);
     const [deviceName, setDeviceName] = useState("");
+    const [hasActiveFilters, setHasActiveFilters] = useState(false);
     const [filters, setFilters] = useState({
-        status: "",
         fromDate: "",
         endDate: "",
         sessionDurationMin: "",
@@ -56,12 +55,29 @@ export default function Sessions() {
         }
     };
 
+    // Helper function to sort sessions in descending order by startupTime
+    const sortSessionsDescending = (sessionData) => {
+        return [...sessionData].sort((a, b) => {
+            // If both have startupTime, compare them
+            if (a.startupTime && b.startupTime) {
+                return new Date(b.startupTime) - new Date(a.startupTime);
+            }
+            // If only a has startupTime, put a first
+            if (a.startupTime) return -1;
+            // If only b has startupTime, put b first
+            if (b.startupTime) return 1;
+            // If neither has startupTime, sort by id descending
+            return b.id - a.id;
+        });
+    };
+
     const fetchSessions = async () => {
         if (!deviceId) return;
         
         setLoading(true);
         try {
             const hasFilters = Object.values(filters).some(v => v !== "");
+            setHasActiveFilters(hasFilters);
             
             let response;
             if (hasFilters) {
@@ -77,10 +93,13 @@ export default function Sessions() {
                 response = await api.get(`/admin/sessions/${deviceId}`);
             }
             
-            setSessions(response.data || []);
-            setFilteredSessions(response.data || []);
-            if (response.data && response.data.length > 0) {
-                toast.success(`Loaded ${response.data.length} sessions`);
+            // Sort data in descending order by startupTime
+            const sortedData = sortSessionsDescending(response.data || []);
+            
+            setSessions(sortedData);
+            setFilteredSessions(sortedData);
+            if (sortedData.length > 0) {
+                toast.success(`Loaded ${sortedData.length} sessions`);
             } else {
                 toast.info("No sessions found for this device");
             }
@@ -100,12 +119,12 @@ export default function Sessions() {
 
     const handleReset = () => {
         setFilters({
-            status: "",
             fromDate: "",
             endDate: "",
             sessionDurationMin: "",
             sessionDurationMax: ""
         });
+        setHasActiveFilters(false);
         setTimeout(() => {
             fetchSessions();
         }, 100);
@@ -186,6 +205,29 @@ export default function Sessions() {
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         return `${hours}h ${minutes}m`;
+    };
+
+    // Calculate total session duration
+    const calculateTotalDuration = () => {
+        return filteredSessions.reduce((total, session) => {
+            return total + (session.sessionDurationSeconds || 0);
+        }, 0);
+    };
+
+    // Format total duration in a readable format
+    const formatTotalDuration = (seconds) => {
+        if (!seconds || seconds === 0) return '0s';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        
+        let parts = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+        
+        return parts.join(' ');
     };
 
     if (loading) {
@@ -280,22 +322,6 @@ export default function Sessions() {
                             <h6 className="fw-bold mb-3">Advanced Filters</h6>
                             <div className="row g-3">
                                 <div className="col-md-3">
-                                    <label className="form-label small fw-semibold">Status</label>
-                                    <select
-                                        className="form-select form-select-sm"
-                                        value={filters.status}
-                                        onChange={(e) => setFilters({...filters, status: e.target.value})}
-                                    >
-                                        <option value="">All</option>
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                        <option value="COMPLETED">Completed</option>
-                                        <option value="RUNNING">Running</option>
-                                        <option value="ENDED">Ended</option>
-                                        <option value="CLOSED">Closed</option>
-                                    </select>
-                                </div>
-                                <div className="col-md-3">
                                     <label className="form-label small fw-semibold">Min Duration (s)</label>
                                     <input
                                         type="number"
@@ -368,7 +394,12 @@ export default function Sessions() {
                                     <thead className="table-light">
                                         <tr>
                                             <th>ID</th>
-                                            <th>Startup Time</th>
+                                            <th>
+                                                Startup Time
+                                                <span className="ms-1">
+                                                    <i className="bi bi-arrow-down text-primary"></i>
+                                                </span>
+                                            </th>
                                             <th>Shutdown Time</th>
                                             <th>Session Duration</th>
                                             <th>Status</th>
@@ -405,14 +436,38 @@ export default function Sessions() {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    {/* Show total duration only when filters are applied */}
+                                    {hasActiveFilters && (
+                                        <tfoot className="table-secondary">
+                                            <tr>
+                                                <td colSpan="3" className="text-end fw-bold">
+                                                    Total Session Duration (Filtered):
+                                                </td>
+                                                <td className="fw-bold text-info">
+                                                    {formatTotalDuration(calculateTotalDuration())}
+                                                    <small className="text-muted ms-1">
+                                                        ({calculateTotalDuration().toFixed(0)}s)
+                                                    </small>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
                                 <div className="d-flex justify-content-between align-items-center mt-3">
                                     <small className="text-muted">
                                         Showing {filteredSessions.length} record{filteredSessions.length !== 1 ? "s" : ""}
                                     </small>
-                                    <span className="badge bg-light text-dark">
-                                        Total: {filteredSessions.length}
-                                    </span>
+                                    <div>
+                                        <span className="badge bg-light text-dark me-2">
+                                            Total Records: {filteredSessions.length}
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <span className="badge bg-info text-white">
+                                                Total Duration: {formatTotalDuration(calculateTotalDuration())}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -422,8 +477,3 @@ export default function Sessions() {
         </Layout>
     );
 }
-
-
-
-
-

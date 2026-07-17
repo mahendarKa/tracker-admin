@@ -1,5 +1,3 @@
-
-
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../services/axiosConfig";
@@ -16,8 +14,8 @@ export default function IdleActivities() {
     const [loading, setLoading] = useState(true);
     const [showFilters, setShowFilters] = useState(false);
     const [deviceName, setDeviceName] = useState("");
+    const [hasActiveFilters, setHasActiveFilters] = useState(false);
     const [filters, setFilters] = useState({
-        status: "",
         fromDate: "",
         endDate: "",
         idleSecondsMin: "",
@@ -57,12 +55,29 @@ export default function IdleActivities() {
         }
     };
 
+    // Helper function to sort idle activities in descending order by idleStart
+    const sortIdleDescending = (idleData) => {
+        return [...idleData].sort((a, b) => {
+            // If both have idleStart, compare them
+            if (a.idleStart && b.idleStart) {
+                return new Date(b.idleStart) - new Date(a.idleStart);
+            }
+            // If only a has idleStart, put a first
+            if (a.idleStart) return -1;
+            // If only b has idleStart, put b first
+            if (b.idleStart) return 1;
+            // If neither has idleStart, sort by id descending
+            return b.id - a.id;
+        });
+    };
+
     const fetchIdleActivities = async () => {
         if (!deviceId) return;
         
         setLoading(true);
         try {
             const hasFilters = Object.values(filters).some(v => v !== "");
+            setHasActiveFilters(hasFilters);
             
             let response;
             if (hasFilters) {
@@ -78,10 +93,13 @@ export default function IdleActivities() {
                 response = await api.get(`/admin/idle/${deviceId}`);
             }
             
-            setIdleList(response.data || []);
-            setFilteredIdle(response.data || []);
-            if (response.data && response.data.length > 0) {
-                toast.success(`Loaded ${response.data.length} idle activities`);
+            // Sort data in descending order by idleStart
+            const sortedData = sortIdleDescending(response.data || []);
+            
+            setIdleList(sortedData);
+            setFilteredIdle(sortedData);
+            if (sortedData.length > 0) {
+                toast.success(`Loaded ${sortedData.length} idle activities`);
             } else {
                 toast.info("No idle activities found for this device");
             }
@@ -101,12 +119,12 @@ export default function IdleActivities() {
 
     const handleReset = () => {
         setFilters({
-            status: "",
             fromDate: "",
             endDate: "",
             idleSecondsMin: "",
             idleSecondsMax: ""
         });
+        setHasActiveFilters(false);
         setTimeout(() => {
             fetchIdleActivities();
         }, 100);
@@ -187,6 +205,29 @@ export default function IdleActivities() {
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         return `${hours}h ${minutes}m`;
+    };
+
+    // Calculate total idle duration
+    const calculateTotalDuration = () => {
+        return filteredIdle.reduce((total, idle) => {
+            return total + (idle.idleSeconds || 0);
+        }, 0);
+    };
+
+    // Format total duration in a readable format
+    const formatTotalDuration = (seconds) => {
+        if (!seconds || seconds === 0) return '0s';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        
+        let parts = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+        
+        return parts.join(' ');
     };
 
     if (loading) {
@@ -281,22 +322,6 @@ export default function IdleActivities() {
                             <h6 className="fw-bold mb-3">Advanced Filters</h6>
                             <div className="row g-3">
                                 <div className="col-md-3">
-                                    <label className="form-label small fw-semibold">Status</label>
-                                    <select
-                                        className="form-select form-select-sm"
-                                        value={filters.status}
-                                        onChange={(e) => setFilters({...filters, status: e.target.value})}
-                                    >
-                                        <option value="">All</option>
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                        <option value="COMPLETED">Completed</option>
-                                        <option value="IDLE">Idle</option>
-                                        <option value="RUNNING">Running</option>
-                                        <option value="CLOSED">Closed</option>
-                                    </select>
-                                </div>
-                                <div className="col-md-3">
                                     <label className="form-label small fw-semibold">Min Idle (s)</label>
                                     <input
                                         type="number"
@@ -369,7 +394,12 @@ export default function IdleActivities() {
                                     <thead className="table-light">
                                         <tr>
                                             <th>ID</th>
-                                            <th>Idle Start</th>
+                                            <th>
+                                                Idle Start
+                                                <span className="ms-1">
+                                                    <i className="bi bi-arrow-down text-primary"></i>
+                                                </span>
+                                            </th>
                                             <th>Idle End</th>
                                             <th>Idle Duration</th>
                                             <th>Status</th>
@@ -406,14 +436,38 @@ export default function IdleActivities() {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    {/* Show total duration only when filters are applied */}
+                                    {hasActiveFilters && (
+                                        <tfoot className="table-secondary">
+                                            <tr>
+                                                <td colSpan="3" className="text-end fw-bold">
+                                                    Total Idle Duration (Filtered):
+                                                </td>
+                                                <td className="fw-bold text-warning">
+                                                    {formatTotalDuration(calculateTotalDuration())}
+                                                    <small className="text-muted ms-1">
+                                                        ({calculateTotalDuration().toFixed(0)}s)
+                                                    </small>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
                                 <div className="d-flex justify-content-between align-items-center mt-3">
                                     <small className="text-muted">
                                         Showing {filteredIdle.length} record{filteredIdle.length !== 1 ? "s" : ""}
                                     </small>
-                                    <span className="badge bg-light text-dark">
-                                        Total: {filteredIdle.length}
-                                    </span>
+                                    <div>
+                                        <span className="badge bg-light text-dark me-2">
+                                            Total Records: {filteredIdle.length}
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <span className="badge bg-warning text-dark">
+                                                Total Idle: {formatTotalDuration(calculateTotalDuration())}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../services/axiosConfig";
@@ -16,6 +15,7 @@ export default function Windows() {
     const [showFilters, setShowFilters] = useState(false);
     const [search, setSearch] = useState("");
     const [deviceName, setDeviceName] = useState("");
+    const [hasActiveFilters, setHasActiveFilters] = useState(false);
     const [filters, setFilters] = useState({
         windowTitle: "",
         status: "",
@@ -58,12 +58,29 @@ export default function Windows() {
         }
     };
 
+    // Helper function to sort windows in descending order by startTime
+    const sortWindowsDescending = (windowData) => {
+        return [...windowData].sort((a, b) => {
+            // If both have startTime, compare them
+            if (a.startTime && b.startTime) {
+                return new Date(b.startTime) - new Date(a.startTime);
+            }
+            // If only a has startTime, put a first
+            if (a.startTime) return -1;
+            // If only b has startTime, put b first
+            if (b.startTime) return 1;
+            // If neither has startTime, sort by id descending
+            return b.id - a.id;
+        });
+    };
+
     const fetchWindows = async () => {
         if (!deviceId) return;
         
         setLoading(true);
         try {
             const hasFilters = Object.values(filters).some(v => v !== "");
+            setHasActiveFilters(hasFilters);
             
             let response;
             if (hasFilters) {
@@ -79,10 +96,13 @@ export default function Windows() {
                 response = await api.get(`/admin/windows/${deviceId}`);
             }
             
-            setWindows(response.data || []);
-            setFilteredWindows(response.data || []);
-            if (response.data && response.data.length > 0) {
-                toast.success(`Loaded ${response.data.length} windows`);
+            // Sort data in descending order by start time
+            const sortedData = sortWindowsDescending(response.data || []);
+            
+            setWindows(sortedData);
+            setFilteredWindows(sortedData);
+            if (sortedData.length > 0) {
+                toast.success(`Loaded ${sortedData.length} windows`);
             } else {
                 toast.info("No windows found for this device");
             }
@@ -121,6 +141,7 @@ export default function Windows() {
             durationMax: ""
         });
         setSearch("");
+        setHasActiveFilters(false);
         setTimeout(() => {
             fetchWindows();
         }, 100);
@@ -192,6 +213,29 @@ export default function Windows() {
             "CLOSED": "bg-danger"
         };
         return statusMap[status?.toUpperCase()] || "bg-secondary";
+    };
+
+    // Calculate total duration
+    const calculateTotalDuration = () => {
+        return filteredWindows.reduce((total, window) => {
+            return total + (window.durationSeconds || 0);
+        }, 0);
+    };
+
+    // Format duration in a readable format
+    const formatDuration = (seconds) => {
+        if (!seconds || seconds === 0) return '0s';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        
+        let parts = [];
+        if (hours > 0) parts.push(`${hours}h`);
+        if (minutes > 0) parts.push(`${minutes}m`);
+        if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+        
+        return parts.join(' ');
     };
 
     if (loading) {
@@ -338,10 +382,7 @@ export default function Windows() {
                                         onChange={(e) => setFilters({...filters, status: e.target.value})}
                                     >
                                         <option value="">All</option>
-                                        <option value="ACTIVE">Active</option>
-                                        <option value="INACTIVE">Inactive</option>
-                                        <option value="COMPLETED">Completed</option>
-                                        <option value="IDLE">Idle</option>
+                                        <option value="RUNNING">Running</option>
                                         <option value="CLOSED">Closed</option>
                                     </select>
                                 </div>
@@ -419,7 +460,12 @@ export default function Windows() {
                                         <tr>
                                             <th>ID</th>
                                             <th>Window Title</th>
-                                            <th>Start Time</th>
+                                            <th>
+                                                Start Time 
+                                                <span className="ms-1">
+                                                    <i className="bi bi-arrow-down text-primary"></i>
+                                                </span>
+                                            </th>
                                             <th>End Time</th>
                                             <th>Duration (s)</th>
                                             <th>Status</th>
@@ -464,14 +510,38 @@ export default function Windows() {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    {/* Show total duration only when filters are applied */}
+                                    {hasActiveFilters && (
+                                        <tfoot className="table-secondary">
+                                            <tr>
+                                                <td colSpan="4" className="text-end fw-bold">
+                                                    Total Duration (Filtered):
+                                                </td>
+                                                <td className="fw-bold text-primary">
+                                                    {formatDuration(calculateTotalDuration())}
+                                                    <small className="text-muted ms-1">
+                                                        ({calculateTotalDuration().toFixed(0)}s)
+                                                    </small>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
                                 <div className="d-flex justify-content-between align-items-center mt-3">
                                     <small className="text-muted">
                                         Showing {filteredWindows.length} record{filteredWindows.length !== 1 ? "s" : ""}
                                     </small>
-                                    <span className="badge bg-light text-dark">
-                                        Total: {filteredWindows.length}
-                                    </span>
+                                    <div>
+                                        <span className="badge bg-light text-dark me-2">
+                                            Total Records: {filteredWindows.length}
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <span className="badge bg-primary text-white">
+                                                Total Duration: {formatDuration(calculateTotalDuration())}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
